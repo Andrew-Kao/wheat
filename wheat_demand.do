@@ -19,7 +19,7 @@ gen overflow = q_production - q_demand
 gen cumulative_stock = sum(overflow) + 150
 
 // twoway line q_demand q_production q_ukraine year
-twoway line overflow cumulative_stock year
+twoway line overflow cumulative_stock q_production year
 
 gen log_q_demand = log(q_demand)
 gen log_pop = log(population)
