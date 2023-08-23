@@ -57,10 +57,12 @@ save `panel'
 ********* MAIN RESULT (POINT EST.) *********
 
 
+* estimate demand
+reg log_q_demand log_pop, r
 
 
 * estimate beta
-reg log_q_demand log_pop, r
+reg logP logQ i.id, r
 
 
 
