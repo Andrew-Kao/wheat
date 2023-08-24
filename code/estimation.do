@@ -97,6 +97,11 @@ gen gamma_c = exp(gamma_help_2)
 keep id gamma_c
 duplicates drop
 
+preserve
+keep id
+save "country_id", replace
+restore
+
 * getting quantities that firms plan to produce in 2022
 foreach i of numlist 1/124 {
 gen gamma_c_alpha_`i' = (gamma_c/gamma_c[`i'])^(1/(1-`alpha'))
