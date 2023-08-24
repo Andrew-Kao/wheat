@@ -260,6 +260,9 @@ else {
 
 }
 
+*GETTING 95% CI FOR P_2022_co and other variables
+foreach v in "P_2022_co" "Q_tilde_1_co" {
+	
 preserve
 *drop simulations that are rejected by our model
 drop if alpha <= 1
@@ -267,10 +270,15 @@ drop if alpha <= 1
 
 *dropping the point estimate to get CS
 drop if draw == 0
-sort P_2022_co
-sum P_2022_co, d
-local P_2022_co_l95 = round(P_2022_co[round(r(N)/100*2.5)],0.01)
-local P_2022_co_u95 = round(P_2022_co[round(r(N)/100*97.5)],0.01)
+drop if missing(`v')
+
+sort `v'
+qui sum `v', d
+local `v'_l95 = round(`v'[round(r(N)/100*2.5)],0.01)
+local `v'_u95 = round(`v'[round(r(N)/100*97.5)],0.01)
+local nsim = r(N)
 restore 
 
-di "The counterfactual price P_2022 is " round(P_2022_co[1001],0.01) " with 95\% confidence interval [" `P_2022_co_l95' "; " `P_2022_co_u95' "]"
+di "`v' is " round(`v'[1001],0.01) " with 95\% confidence interval [" ``v'_l95' "; " ``v'_u95' "] based on " `nsim' " simulations"
+
+}
