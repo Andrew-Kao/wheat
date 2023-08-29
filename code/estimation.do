@@ -7,8 +7,8 @@ clear all
 *macro drop _all
 set seed 2020
 
-*cd "/Users/AndrewKao/Documents/Grad/G2/QuantEcon/Modeling/wheat/"
-cd "~/Dropbox/GitHub/wheat/"
+cd "/Users/AndrewKao/Documents/Grad/G2/QuantEcon/Modeling/wheat/"
+* cd "~/Dropbox/GitHub/wheat/"
 
 cap erase  "results.dta"
 
@@ -53,8 +53,11 @@ insheet using "raw/wheat_time_series.csv", clear
 merge 1:m year using `wheat_panel' , keep(3) nogen
 gen logP = log(p)
 drop if inlist(country, "Serbia and Montenegro", "USSR", "Czechoslovakia", "Yugoslav SFR") //dropping countries that don't exist in 2020
+// drop if inlist(country, "Botswana", "Chad", "Malta", "New Caledonia", "Palestine", "Qatar", "United Arab Emirates")
 drop if missing(Q) //dropping countries with no observations (newer countries before they were formed)
 encode country, gen(id)
+su id if country == "Ukraine"
+local ukraine_id = r(mean)
 
 tempfile panel
 save `panel'
@@ -68,6 +71,10 @@ reg log_q_demand log_pop, r
 local gamma_d = exp(e(b)[1,2])
 local delta_d = e(b)[1,1]
 local Q_D_2022 = `gamma_d'*$pop_2022^`delta_d'
+predict demand_hat
+gen log_zeta = log_q_demand - demand_hat
+tempfile zeta
+save `zeta'
 
 *Expectation and variance of log supply shocks 
 use `shock', clear
@@ -94,6 +101,50 @@ gen gamma_help = logP - log(`alpha') + (`alpha' -1)*(`nu_mean' - logQ)
 bysort id: egen gamma_help_2 = mean(gamma_help)
 gen gamma_c = exp(gamma_help_2)
 
+gen log_nu = (logP - log(`alpha') + (`alpha'-1)*(-logQ) - log(gamma_c))/(`alpha' -1)
+
+tempfile x
+save `x'
+local ptest = 0
+forv i = 1/1000 {
+use `x', clear
+preserve
+gen fake = runiform(0,1)
+collapse (sum) fake,by(year)
+sort fake
+gen year2 = _n + 1991
+tempfile z
+qui save `z'
+restore
+qui merge n:1 year using `z', keep(1 3) nogen
+drop year
+ren year2 year
+qui merge n:1 year using `zeta'
+qui gen nu = exp(log_nu)
+qui gen zeta = exp(log_zeta)
+qui reg nu zeta, r
+if (2 * ttail(e(df_r), abs(_b[zeta]/_se[zeta])))*4000 < 0.01 {
+	local ptest = `ptest' + 1
+}
+qui reg log_nu log_zeta, r
+if (2 * ttail(e(df_r), abs(_b[log_zeta]/_se[log_zeta])))*4000 < 0.01 {
+	local ptest = `ptest' + 1
+}
+qui reg log_nu zeta, r
+if (2 * ttail(e(df_r), abs(_b[zeta]/_se[zeta])))*4000 < 0.01 {
+	local ptest = `ptest' + 1
+}
+qui reg nu log_zeta, r
+if (2 * ttail(e(df_r), abs(_b[log_zeta]/_se[log_zeta])))*4000 < 0.01 {
+	local ptest = `ptest' + 1
+}
+if mod(`i',100) == 0 {
+	di `i'
+}
+}
+di `ptest'
+block
+
 keep id gamma_c
 duplicates drop
 
@@ -114,7 +165,7 @@ gen gamma_c_`i' = gamma_c[`i']
 gen P_2022 = Q_tilde_1^(`alpha'-1)*`alpha'*gamma_c[1]
 
 *dropping gamma_ukraine
-drop if id == 114
+drop if id == `ukraine_id'
 
 * getting counterfactual quantities that firms plan to produce in 2022
 foreach i of numlist 1/113 115/124 {
@@ -213,7 +264,7 @@ if missing(P_2022) {
 }
 
 *dropping gamma_ukraine
-drop if id == 114
+drop if id == `ukraine_id'
 
 * getting counterfactual quantities that firms plan to produce in 2022
 foreach i of numlist 1/113 115/124 {
@@ -265,8 +316,10 @@ else {
 
 }
 
+gen P_diff = P_2022_co - P_2022
+
 *GETTING 95% CI FOR P_2022_co and other variables
-foreach v in "P_2022_co" "Q_tilde_1_co" {
+foreach v in "P_2022_co" "Q_tilde_1_co" "P_diff" {
 	
 preserve
 *drop simulations that are rejected by our model
@@ -287,3 +340,35 @@ restore
 di "`v' is " round(`v'[1001],0.01) " with 95\% confidence interval [" ``v'_l95' "; " ``v'_u95' "] based on " `nsim' " simulations"
 
 }
+
+*** graphics
+block
+use "results.dta", clear
+keep if draw == 0
+keep Q_* draw
+
+preserve
+* real data
+keep Q_*_co draw
+ren (Q_*_co) (Q_*)
+reshape long Q_tilde_, i(draw) j(id)
+ren Q_tilde_ Q_co
+tempfile co
+save `co'
+restore
+
+drop Q_*_co
+reshape long Q_tilde_, i(draw) j(id)
+ren Q_tilde_ Q_tilde
+merge 1:1 id using `co', keep(1 3) nogen
+
+** TODO: merge id data
+insheet using "raw/wheat_time_series.csv", clear
+merge 1:m year using `wheat_panel' , keep(3) nogen
+gen logP = log(p)
+drop if inlist(country, "Serbia and Montenegro", "USSR", "Czechoslovakia", "Yugoslav SFR") //dropping countries that don't exist in 2020
+// drop if inlist(country, "Botswana", "Chad", "Malta", "New Caledonia", "Palestine", "Qatar", "United Arab Emirates")
+drop if missing(Q) //dropping countries with no observations (newer countries before they were formed)
+encode country, gen(id)
+
+** then make graphic...
